@@ -1,0 +1,11 @@
+[package]
+name = "miku-lang"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+byteorder = "1.5.0"
+clap = { version = "4.5.45", features = ["derive"] }
+evil-janet = {version = "1.37.2", features = ["link-amalg"]}
+pest = "2.8.1"
+pest_derive = "2.8.1"

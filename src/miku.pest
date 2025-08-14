@@ -1,0 +1,171 @@
+program = { SOI ~ NEWLINE* ~ (import_statement ~ NEWLINE+)* ~ NEWLINE* ~ song_declaration ~ NEWLINE* ~ EOI }
+
+block = { NEWLINE* ~ (statement ~ NEWLINE+)* ~ statement? }
+
+statement = {
+    variable_declaration |
+    assignment |
+    loop_statement |
+    conditional |
+    sing_statement |
+    echo_statement |
+    tune_statement |
+    return_statement |
+    expression_statement
+}
+
+import_statement = {
+    // remix module as alias
+    "remix" ~ identifier ~ ("as" ~ identifier)? |
+    // remix { item1, item2 as alias } from "module"
+    "remix" ~ "{" ~ import_list ~ "}" ~ "from" ~ identifier |
+    // remix * from module
+    wildcard_import_statement
+}
+
+wildcard_import_statement = {
+    "remix" ~ "*" ~ "from" ~ identifier
+}
+
+import_list = { import_item ~ ("," ~ import_item)* }
+import_item = { identifier ~ ("as" ~ identifier)? }
+
+song_declaration = { "song" ~ identifier ~ cover_item? ~ "{" ~ song_block ~ "}" }
+song_block = { NEWLINE* ~ (song_statement ~ NEWLINE+)* ~ song_statement? }
+song_statement = _{
+    function_declaration |
+    variable_declaration
+}
+
+cover_item = { "cover" ~ "of" ~ identifier }
+
+function_declaration = {
+    function_type ~ identifier ~ "(" ~ parameter_list? ~ ")" ~
+    ("->" ~ mikutype)? ~ "{" ~ block ~ "}"
+}
+function_type = { "melody" | "verse" }
+
+parameter_list = { parameter ~ ("," ~ parameter)* }
+parameter = { identifier ~ ":" ~ mikutype }
+
+variable_declaration = {
+    "let" ~ identifier ~ ":" ~ mikutype ~ ("=" ~ expression)? |
+    "let" ~ identifier ~ "=" ~ expression
+}
+
+assignment = { identifier ~ (index | member)* ~ "=" ~ expression }
+
+mikutype = {
+    "note" |    // integer
+    "pitch" |   // float
+    "lyric" |   // string
+    "beat" |    // boolean
+    "track" |   // array
+    "harmony" | // struct
+    "void" |    // void
+    identifier  // song (class)
+}
+
+loop_statement = {
+    repeat_loop |
+    while_loop |
+    for_loop |
+    countdown_loop
+}
+
+repeat_loop = { "repeat" ~ expression ~ "times" ~ "{" ~ block ~ "}" }
+countdown_loop = { "countdown" ~ identifier ~ "from" ~ expression ~ "{" ~ block ~ "}" }
+while_loop = { "while" ~ expression ~ "sounds" ~ "{" ~ block ~ "}" }
+for_loop = { "for" ~ identifier ~ "in" ~ expression ~ "{" ~ block ~ "}" }
+
+conditional = {
+    if_branch ~
+    else_if_branch* ~
+    else_branch?
+}
+
+if_branch = { "if" ~ expression ~ "drops" ~ "{" ~ block ~ "}" }
+else_if_branch = { "else" ~ "if" ~ expression ~ "drops" ~ "{" ~ block ~ "}" }
+else_branch = { "else" ~ "{" ~ block ~ "}" }
+
+sing_statement = { "sing" ~ expression_list }
+
+echo_statement = { "echo" ~ expression_list }
+
+tune_statement = { "tune" ~ identifier ~ (index | member)* ~ tune_direction ~ expression? }
+tune_direction = { "up" | "down" }
+
+play_statement = { "play" ~ mikutype }
+
+return_statement = { "crescendo" ~ expression? }
+
+expression_statement = { expression }
+
+expression = { logical_or }
+
+eq_neq = { "==" | "!=" }
+comp_op = { "<=" | ">=" | "<" | ">" }
+add_op = { "+" | "-" }
+mul_op = { "*" | "/" | "%" }
+unary_op = { "!" | "-" | "+" }
+
+logical_or = { logical_and ~ ("||" ~ logical_and)* }
+logical_and = { equality ~ ("&&" ~ equality)* }
+equality = { comparison ~ (eq_neq ~ comparison)* }
+comparison = { harmonic ~ (comp_op ~ harmonic)* }
+// ~ = harmonie, # = dissonance (unused for now)
+harmonic = { additive ~ (("~" | "#") ~ additive)* }
+additive = { multiplicative ~ (add_op ~ multiplicative)* }
+multiplicative = { unary ~ (mul_op ~ unary)* }
+unary = { unary_op* ~ postfix }
+postfix = { primary ~ (call | index | member)* }
+
+call = { "(" ~ expression_list? ~ ")" }
+index = { "[" ~ expression ~ "]" }
+member = { "." ~ identifier }
+
+primary = {
+    "(" ~ expression ~ ")" |
+    play_statement |
+    track_literal |
+    harmony_literal |
+    boolean_literal |
+    identifier |
+    number |
+    string_literal
+}
+
+track_literal = { "[" ~ expression_list? ~ "]" }
+harmony_literal = { "{" ~ harmony_field_list? ~ "}" }
+harmony_field_list = { harmony_field ~ ("," ~ harmony_field)* }
+harmony_field = { (identifier | string_literal) ~ ":" ~ expression }
+
+boolean_literal = { "true" | "false" }
+
+identifier = @{
+    (ASCII_ALPHA | "_") ~
+    (ASCII_ALPHANUMERIC | "_")*
+}
+
+number = @{
+    "-"? ~ (
+        "0" |
+        (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+    ) ~ ("." ~ ASCII_DIGIT+)? ~
+    (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+string_literal = @{
+    "\"" ~ (!("\"" | "\\") ~ ANY | "\\" ~ ("\"" | "\\" | "n" | "r" | "t"))* ~ "\"" |
+    "'" ~ (!("'" | "\\") ~ ANY | "\\" ~ ("'" | "\\" | "n" | "r" | "t"))* ~ "'"
+}
+
+expression_list = { expression ~ ("," ~ expression)* }
+
+WHITESPACE = _{ " " | "\t" }
+NEWLINE = _{ "\n" | "\r\n" | "\r" }
+
+COMMENT = _{
+    "//" ~ (!NEWLINE ~ ANY)* |
+    "/*" ~ (!"*/" ~ ANY)* ~ "*/"
+}

@@ -1,0 +1,18 @@
+remix Matryoshka
+
+song TripleBaka cover of Matryoshka {
+    let s = 42
+    let z = play Matryoshka
+
+    verse main(args: track) -> note {
+        let t = play TripleBaka
+        sing t.s
+        t.value()
+        sing t.get()
+        Matryoshka.test()
+        if 42 == 42 || 42 == 43 drops {
+            sing "42"
+        }
+        crescendo 0
+    }
+}

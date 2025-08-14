@@ -1,0 +1,56 @@
+song HelloMiku {
+    let message = "Hello, World! 🎵"
+    let tempo = 120
+
+    melody greet(name: lyric) -> note {
+        sing "Greetings ", name, " ! 💙"
+        tune song.tempo up 10
+        crescendo song.byebye() * song.tempo
+    }
+
+    melody byebye() -> note {
+        crescendo 42
+    }
+
+    melody type() -> harmony {
+        let test: harmony = { "name": 1, "key": true, "lol": 3 }
+        crescendo test
+    }
+
+    melody character() -> harmony {
+        crescendo { "name": "Teto", "surname": "Kasane" }
+    }
+
+    verse main(lyrics: track) -> note {
+        let hello = play HelloMiku
+        sing hello.message
+        if hello.tempo > 100 drops {
+            repeat 3 times {
+                sing "♪ La la la ♫"
+            }
+        } else if hello.tempo < 100 drops {
+            sing "bar"
+        } else {
+            sing "foo"
+            crescendo 0
+        }
+        sing "name:"
+        sing hello.type().name
+
+        sing hello.greet(hello.character().name)
+
+        let n = 1
+        while n <= 5 sounds {
+            sing n, " times"
+            n = n + 1
+        }
+
+        countdown dog from 3 {
+            sing dog, " dogs"
+        }
+
+        sing "end"
+
+        crescendo 0
+    }
+}
