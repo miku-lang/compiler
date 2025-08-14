@@ -467,6 +467,12 @@ void {title}_deallocate({title}* song) {{
                 )?;
                 self.codegen_expression(file, &operand)
             }
+            Expression::Index { object, index } => {
+                self.codegen_expression(file, &object)?;
+                write!(file, "[")?;
+                self.codegen_expression(file, &index)?;
+                write!(file, "]")
+            }
             unknown => panic!("unknown expression: {unknown:?}"),
         }
     }

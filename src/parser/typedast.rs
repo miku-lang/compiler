@@ -85,6 +85,10 @@ pub enum Expression {
         operator: UnaryOperator,
         operand: Box<Expression>,
     },
+    Index {
+        object: Box<Expression>,
+        index: Box<Expression>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

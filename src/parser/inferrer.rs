@@ -503,7 +503,7 @@ impl Inferrer {
     fn infer_expression(&mut self, expression: &ast::Expression) -> (Type, Expression) {
         match &expression.kind {
             ast::ExpressionKind::Integer(i) => (Type::Int, Expression::Integer(*i)),
-            ast::ExpressionKind::Number(n) => (Type::Int, Expression::Number(*n)),
+            ast::ExpressionKind::Number(n) => (Type::Float, Expression::Number(*n)),
             ast::ExpressionKind::String(s) => (Type::String, Expression::String(s.clone())),
             ast::ExpressionKind::Boolean(b) => (Type::Boolean, Expression::Boolean(*b)),
             ast::ExpressionKind::Identifier(ident) => {
@@ -630,10 +630,24 @@ impl Inferrer {
                     panic!("{callee:?} is not a method.");
                 }
             }
-            ast::ExpressionKind::Index {
-                object: _,
-                index: _,
-            } => todo!(),
+            ast::ExpressionKind::Index { object, index } => {
+                let (t, object) = self.infer_expression(object);
+                let (it, index) = self.infer_expression(index);
+                if it != Type::Int {
+                    panic!("Tracks can only be indexed with notes. Got {it}.");
+                }
+
+                match t {
+                    Type::Array(inner_type) => (
+                        *inner_type.clone(),
+                        Expression::Index {
+                            object: Box::new(object),
+                            index: Box::new(index),
+                        },
+                    ),
+                    _ => todo!(),
+                }
+            }
             ast::ExpressionKind::Member { object, member } => {
                 let (t, e) = self.infer_expression(object);
 

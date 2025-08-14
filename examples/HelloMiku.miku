@@ -49,6 +49,12 @@ song HelloMiku {
             sing dog, " dogs"
         }
 
+        for c in [1337, 69, 42, 666] {
+            sing c
+        }
+
+        sing "1337: ", [1337, 69, 42, 666][0]
+
         sing "end"
 
         crescendo 0
