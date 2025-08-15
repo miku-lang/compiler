@@ -1,0 +1,10 @@
+verse InitWindow(width: note, height: note, title: lyric) {}
+verse CloseWindow() {}
+verse SetTargetFPS(fps: note) {}
+verse WindowShouldClose() -> beat {}
+verse BeginDrawing() {}
+verse ClearBackground(colour: Color) {}
+verse DrawText(text: lyric, x: note, y: note, fontsize: note, colour: Color) {}
+verse EndDrawing() {}
+let WHITE: Color
+let RED: Color

@@ -1,7 +1,9 @@
 use crate::c::infer_type;
 use crate::parser::ast::MikuType;
+use crate::parser::native::NativeModule;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::Path;
 
 use super::ast;
 use super::typedast::Function as AstFunction;
@@ -19,17 +21,25 @@ pub struct Inferrer {
     pub typed_functions: Vec<AstFunction>,
     pub typed_variables: Vec<AstVariable>,
     pub modules: Vec<Inferrer>,
+    pub native_modules: Vec<NativeModule>,
 }
 
 impl Inferrer {
     pub fn new(program: ast::Program) -> Self {
         let mut modules = vec![];
+        let mut native_modules = vec![];
 
         for r in &program.imports {
             match &r.import_type {
                 ast::RemixType::Module { module, alias: _ } => {
-                    let code = super::parse(&format!("{module}.miku"));
-                    modules.push(Self::new(code));
+                    if Path::new(&format!("{module}.miku")).exists() {
+                        let code = super::parse(&format!("{module}.miku"));
+                        modules.push(Self::new(code));
+                    } else if Path::new(&format!("{module}.album")).exists() {
+                        native_modules.push(NativeModule::new(&module));
+                    } else {
+                        panic!("Module {module} not found.");
+                    }
                 }
                 ast::RemixType::Selective {
                     items: _,
@@ -83,6 +93,7 @@ impl Inferrer {
             typed_functions: vec![],
             typed_variables: vec![],
             modules,
+            native_modules,
         }
     }
 
@@ -140,6 +151,12 @@ impl Inferrer {
                 module.pop();
 
                 return ret;
+            } else if let Some(module) = self.find_native_module(title) {
+                if let Some(f) = module.functions.iter().find(|f| f.name == name) {
+                    return f.return_type.clone();
+                } else {
+                    panic!("Native module {title} doesn't have a function called {name}.");
+                }
             } else {
                 panic!("Unknown module {title}.");
             }
@@ -564,6 +581,11 @@ impl Inferrer {
                         Type::Song(ident.to_string()),
                         Expression::Class(ident.to_string()),
                     )
+                } else if let Some(_) = self.native_modules.iter().find(|m| m.name == *ident) {
+                    (
+                        Type::Song(ident.to_string()),
+                        Expression::Class(ident.to_string()),
+                    )
                 } else {
                     panic!("'{ident}' not found.");
                 }
@@ -759,6 +781,25 @@ impl Inferrer {
                                     target: Box::new(e),
                                 },
                             )
+                        } else if let Some(natmod) =
+                            self.native_modules.iter_mut().find(|m| m.name == song_type)
+                        {
+                            if natmod.has_function(&member) {
+                                (
+                                    Type::Void,
+                                    Expression::Method {
+                                        name: member.clone(),
+                                        target: Box::new(e),
+                                    },
+                                )
+                            } else if let Some(var) = natmod.get_variable(&member) {
+                                (
+                                    var.typed.clone(),
+                                    Expression::Variable(member.clone(), var.typed.clone()),
+                                )
+                            } else {
+                                panic!("{song_type:?} / {member}");
+                            }
                         } else {
                             panic!("Unknown Song => {song_type}");
                         }
@@ -896,6 +937,10 @@ impl Inferrer {
         self.modules.iter_mut().find(|m| m.title == name)
     }
 
+    fn find_native_module(&mut self, name: &str) -> Option<&mut NativeModule> {
+        self.native_modules.iter_mut().find(|m| m.name == name)
+    }
+
     fn get_struct_name(&mut self, struct_type: BTreeMap<String, Type>) -> String {
         let mut struct_name = "".into();
         for (k, v) in &self.structs {
@@ -973,6 +1018,7 @@ impl Inferrer {
                     MikuType::Track => todo!(),
                     MikuType::Harmony => todo!(),
                     MikuType::Void => todo!(),
+                    MikuType::Identifier(_) => todo!(),
                 }
             }
         } else {

@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod inferrer;
+pub mod native;
 pub mod typedast;
 
 use crate::parser::ast::*;
@@ -19,6 +20,20 @@ pub fn parse(filename: &str) -> Program {
     let p = pairs.collect::<Vec<_>>();
 
     convert_program(p[0].clone())
+}
+
+pub fn parse_song_statement(content: &str) -> SongStatementKind {
+    let pairs = MikuParser::parse(Rule::song_statement, &content).unwrap();
+
+    assert_eq!(pairs.len(), 1);
+    let p = pairs.collect::<Vec<_>>();
+
+    let pair = p[0].clone();
+    match pair.as_rule() {
+        Rule::function_declaration => convert_song_function_decl(pair),
+        Rule::variable_declaration => convert_song_variable_decl(pair),
+        _ => unreachable!(),
+    }
 }
 
 fn convert_program(pair: Pair<Rule>) -> Program {
@@ -393,7 +408,7 @@ fn convert_miku_type(name: &str) -> MikuType {
         "track" => MikuType::Track,
         "harmony" => MikuType::Harmony,
         "void" => MikuType::Void,
-        _ => todo!(),
+        _ => MikuType::Identifier(name.to_string()),
     }
 }
 

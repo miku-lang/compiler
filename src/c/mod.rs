@@ -1,4 +1,5 @@
 use crate::parser::inferrer::Inferrer;
+use crate::parser::native::NativeModule;
 use crate::parser::typedast::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -138,9 +139,56 @@ void print_bool(bool value) {{
         Ok(())
     }
 
+    fn codegen_native_module(
+        &mut self,
+        file: &mut File,
+        module: NativeModule,
+    ) -> std::io::Result<()> {
+        writeln!(file, "#include <{}.h>", module.name)?;
+
+        for fun in module.functions {
+            write!(
+                file,
+                "{} {}_{}_{}(",
+                type_to_c(&fun.return_type),
+                module.name,
+                fun.name,
+                types_to_string(&fun.parameters)
+            )?;
+            for (i, p) in fun.parameters.iter().enumerate() {
+                if i > 0 {
+                    write!(file, ", ")?;
+                }
+                write!(file, "{} a{i}", type_to_c(&p))?;
+            }
+            writeln!(file, ") {{")?;
+            write!(file, "    ")?;
+            if let Type::Void = fun.return_type {
+                // do nothing
+            } else {
+                write!(file, "return ")?;
+            }
+            write!(file, "{}(", fun.name)?;
+            for i in 0..fun.parameters.len() {
+                if i > 0 {
+                    write!(file, ", ")?;
+                }
+                write!(file, "a{i}")?;
+            }
+            writeln!(file, ");")?;
+            writeln!(file, "}}\n")?;
+        }
+
+        Ok(())
+    }
+
     fn codegen_module(&mut self, file: &mut File, inferrer: Inferrer) -> std::io::Result<()> {
         for module in inferrer.modules.clone() {
             self.codegen_module(file, module)?;
+        }
+
+        for module in inferrer.native_modules.clone() {
+            self.codegen_native_module(file, module)?;
         }
 
         for (fields, name) in &inferrer.structs {
@@ -368,8 +416,23 @@ void {title}_deallocate({title}* song) {{
 
                         return Ok(());
                     }
+                    Type::Class(_) => {
+                        // probably a native module, add a check?
+
+                        write!(file, "{name}(")?;
+                        for (i, a) in arguments.iter().enumerate() {
+                            if i > 0 || is_method {
+                                write!(file, ", ")?;
+                            }
+                            self.codegen_expression(file, a)?;
+                        }
+                        write!(file, ")")?;
+                        return Ok(());
+                    }
                     _ => {}
                 }
+
+                println!("{target_type:?}: {name:?}");
 
                 write!(
                     file,

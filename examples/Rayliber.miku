@@ -1,0 +1,18 @@
+remix raylib
+
+song Rayliber {
+    verse main(args: track) -> note {
+        raylib.InitWindow(800, 600, "Miku Miku Beam")
+        raylib.SetTargetFPS(60)
+
+        while !raylib.WindowShouldClose() sounds {
+            raylib.BeginDrawing()
+                raylib.ClearBackground(raylib.WHITE)
+                raylib.DrawText("TSODING", 190, 200, 20, raylib.RED)
+            raylib.EndDrawing()
+        }
+
+        raylib.CloseWindow()
+        crescendo 0
+    }
+}

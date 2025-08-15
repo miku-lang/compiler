@@ -156,6 +156,7 @@ pub enum MikuType {
     Track,
     Harmony,
     Void,
+    Identifier(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -344,6 +345,7 @@ impl std::fmt::Display for MikuType {
             MikuType::Track => write!(f, "track"),
             MikuType::Harmony => write!(f, "harmony"),
             MikuType::Void => write!(f, "void"),
+            MikuType::Identifier(_) => todo!(),
         }
     }
 }
