@@ -122,6 +122,16 @@ impl Inferrer {
         }
 
         if title != self.title {
+            // find a better way to handle internal modules/stdlib
+            if title == "internal track" {
+                match name {
+                    "len" => {
+                        return Type::Int;
+                    }
+                    _ => todo!(),
+                }
+            }
+
             if let Some(module) = self.find_module(title) {
                 module.push();
 
@@ -646,6 +656,10 @@ impl Inferrer {
                             Type::Song(song_type) => (song_type.clone(), true),
                             _ => todo!(),
                         },
+                        Expression::Array(_) => match name.as_str() {
+                            "len" => ("internal track".to_string(), false),
+                            _ => todo!(),
+                        },
                         _ => {
                             panic!("target {target:?}");
                         }
@@ -767,8 +781,18 @@ impl Inferrer {
                             panic!("{name}: {:?}", self.structs);
                         }
                     }
+                    Type::Array(_) => match member.as_str() {
+                        "len" => (
+                            Type::Int,
+                            Expression::Method {
+                                name: member.clone(),
+                                target: Box::new(e),
+                            },
+                        ),
+                        _ => panic!("Track does't have a melody called '{member}'."),
+                    },
                     _ => {
-                        eprintln!("object: {object:?}");
+                        eprintln!("object: {object:?} --> {member}");
                         eprintln!("t: {t:?}");
                         eprintln!("e: {e:?}");
                         todo!()

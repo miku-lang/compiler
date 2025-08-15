@@ -351,6 +351,26 @@ void {title}_deallocate({title}* song) {{
                     _ => false,
                 };
 
+                match target_type {
+                    Type::Array(t) => {
+                        let Expression::Array(inner) = &**target else {
+                            panic!("Expression is not an harmony");
+                        };
+
+                        write!(
+                            file,
+                            "array_{}_create({}, ",
+                            type_to_encoded_name(&*t),
+                            inner.len()
+                        )?;
+                        self.codegen_expression(file, target)?;
+                        write!(file, ").length")?;
+
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
                 write!(
                     file,
                     "{}_{name}_{}(",

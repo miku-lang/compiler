@@ -1,6 +1,7 @@
 song HelloMiku {
     let message = "Hello, World! 🎵"
     let tempo = 120
+    let tralala: note // default to zero
 
     melody greet(name: lyric) -> note {
         sing "Greetings ", name, " ! 💙"
@@ -67,9 +68,12 @@ song HelloMiku {
 
         sing "1337: ", [1337, 69, 42, 666][0]
         sing "69: ", [1337, 69, 42, 666][1]
+        sing "track.len(): ", [1337, 69, 42, 666].len()
 
         hello[0]
         hello["hello"] = 42
+
+        sing hello.tralala
 
         sing "end"
 
