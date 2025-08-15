@@ -1,3 +1,4 @@
+use crate::c::infer_type;
 use crate::parser::ast::MikuType;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -232,7 +233,41 @@ impl Inferrer {
             ast::StatementKind::Assignment { target, value } => {
                 let (_, target) = self.infer_expression(target);
                 let (_, value) = self.infer_expression(value);
-                (None, Statement::Assignment { target, value })
+
+                if let Expression::Call {
+                    target,
+                    name,
+                    arguments,
+                    typed,
+                } = target
+                {
+                    let mut arguments = arguments;
+                    arguments.push(value);
+
+                    let classname = match &*target {
+                        Expression::Variable(_, vt) => match vt {
+                            Type::Song(song_type) => song_type.clone(),
+                            _ => todo!(),
+                        },
+                        unknown => panic!("Unknown: {unknown:?} for assignment"),
+                    };
+
+                    let types = arguments.iter().map(|e| infer_type(e)).collect::<Vec<_>>();
+                    let return_type = self.infer_function(&classname, &name, types, true);
+                    assert_eq!(return_type, Type::Void);
+
+                    (
+                        None,
+                        Statement::Expression(Expression::Call {
+                            target,
+                            name,
+                            arguments,
+                            typed,
+                        }),
+                    )
+                } else {
+                    (None, Statement::Assignment { target, value })
+                }
             }
             ast::StatementKind::RepeatLoop { count, body } => {
                 let (_, count) = self.infer_expression(count);
@@ -633,19 +668,34 @@ impl Inferrer {
             ast::ExpressionKind::Index { object, index } => {
                 let (t, object) = self.infer_expression(object);
                 let (it, index) = self.infer_expression(index);
-                if it != Type::Int {
-                    panic!("Tracks can only be indexed with notes. Got {it}.");
-                }
 
                 match t {
-                    Type::Array(inner_type) => (
-                        *inner_type.clone(),
-                        Expression::Index {
-                            object: Box::new(object),
-                            index: Box::new(index),
-                        },
-                    ),
-                    _ => todo!(),
+                    Type::Array(inner_type) => {
+                        if it != Type::Int {
+                            panic!("Tracks can only be indexed with notes. Got {it}.");
+                        }
+                        (
+                            *inner_type.clone(),
+                            Expression::Index {
+                                object: Box::new(object),
+                                index: Box::new(index),
+                            },
+                        )
+                    }
+                    Type::Song(classname) => {
+                        let ret = self.infer_function(&classname, "index", vec![it], true);
+
+                        (
+                            ret.clone(),
+                            Expression::Call {
+                                target: Box::new(object),
+                                name: "index".into(),
+                                arguments: vec![index],
+                                typed: ret.clone(),
+                            },
+                        )
+                    }
+                    _ => panic!("Only tracks and songs can be indexed. Got {t}."),
                 }
             }
             ast::ExpressionKind::Member { object, member } => {
@@ -681,10 +731,9 @@ impl Inferrer {
                                     },
                                 )
                             } else {
-                                println!(
+                                panic!(
                                     "Song {song_type} doesn't have a variable or function called {member}."
                                 );
-                                todo!()
                             }
                         } else if let Some(_) =
                             self.modules.iter_mut().find(|m| m.title == song_type)
@@ -715,15 +764,13 @@ impl Inferrer {
                                 panic!("Harmony doesn't have field {member}.");
                             }
                         } else {
-                            println!("{name:?}");
-                            println!("{:?}", self.structs);
-                            todo!();
+                            panic!("{name}: {:?}", self.structs);
                         }
                     }
                     _ => {
-                        println!("object: {object:?}");
-                        println!("t: {t:?}");
-                        println!("e: {e:?}");
+                        eprintln!("object: {object:?}");
+                        eprintln!("t: {t:?}");
+                        eprintln!("e: {e:?}");
                         todo!()
                     }
                 }
@@ -751,6 +798,10 @@ impl Inferrer {
 
                 if !types.iter().all(|t| *t == types[0]) {
                     panic!("{types:?}");
+                }
+
+                if let Type::Array(_) = &types[0] {
+                    panic!("Can't put a track inside another track (for now).");
                 }
 
                 (

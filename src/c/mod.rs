@@ -68,56 +68,12 @@ impl CodeGenerator {
         self.scopes.pop().unwrap();
     }
 
-    fn find_variable(&self, name: &str) -> Option<Type> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(v) = scope.get(name) {
-                return Some(v.clone());
-            }
-        }
-
-        None
-    }
-
     fn add_variable(&mut self, name: &str, typed: Type) {
         let Some(scope) = self.scopes.last_mut() else {
             unreachable!()
         };
 
         scope.insert(name.to_string(), typed);
-    }
-
-    fn infer_type(&self, expr: &Expression) -> Type {
-        match expr {
-            Expression::Integer(_) => Type::Int,
-            Expression::Number(_) => Type::Float,
-            Expression::Variable(name, typed) => {
-                if let Some(t) = self.find_variable(name) {
-                    if t != *typed {
-                        println!("{:?}", self.scopes);
-                    }
-                    assert_eq!(t, *typed);
-                    Type::Variable(Box::new(t))
-                } else {
-                    panic!("Unknown variable: {name}");
-                }
-            }
-            Expression::Class(cn) => Type::Class(cn.clone()),
-            Expression::Field { typed, .. } => typed.clone(),
-            Expression::Struct(typename, _) => Type::Struct(typename.clone()),
-            Expression::String(_) => Type::String,
-            Expression::Array(items) => {
-                assert_ne!(items.len(), 0);
-                let inner_type = self.infer_type(&items[0]);
-                Type::Array(Box::new(inner_type))
-            }
-            Expression::Call {
-                target: _,
-                name: _,
-                arguments: _,
-                typed,
-            } => typed.clone(),
-            unknown => panic!("Unknown expression to infer: {unknown:?}"),
-        }
     }
 
     fn codegen(&mut self, filename: &str) -> std::io::Result<()> {
@@ -351,7 +307,7 @@ void {title}_deallocate({title}* song) {{
                 name,
                 typed: _,
             } => {
-                let target_type = self.infer_type(target);
+                let target_type = infer_type(target);
                 self.codegen_expression(file, target)?;
 
                 let target_type = if let Type::Variable(typed) = target_type {
@@ -372,11 +328,11 @@ void {title}_deallocate({title}* song) {{
                 arguments,
                 typed: _,
             } => {
-                let target_type = self.infer_type(target);
+                let target_type = infer_type(target);
 
                 let mut types = arguments
                     .iter()
-                    .map(|expr| self.infer_type(expr))
+                    .map(|expr| infer_type(expr))
                     .collect::<Vec<_>>();
 
                 let is_method = match &target_type {
@@ -422,7 +378,7 @@ void {title}_deallocate({title}* song) {{
                     panic!("empty array");
                 }
 
-                let t = self.infer_type(&expressions[0]);
+                let t = infer_type(&expressions[0]);
                 writeln!(file, "({}[]){{", type_to_c(&t))?;
 
                 self.depth += 1;
@@ -534,7 +490,7 @@ void {title}_deallocate({title}* song) {{
                     self.print_depth(file)?;
                     writeln!(file, "{{")?;
 
-                    let it_type = self.infer_type(iterator);
+                    let it_type = infer_type(iterator);
                     let mut is_tmp_var = false;
                     let typed = match &it_type {
                         Type::Variable(s) => s.clone(),
@@ -905,4 +861,28 @@ fn types_to_string(args: &Vec<Type>) -> String {
         .map(|e| type_to_encoded_name(e))
         .collect::<Vec<_>>()
         .join("_")
+}
+
+pub fn infer_type(expr: &Expression) -> Type {
+    match expr {
+        Expression::Integer(_) => Type::Int,
+        Expression::Number(_) => Type::Float,
+        Expression::Variable(_, typed) => Type::Variable(Box::new(typed.clone())),
+        Expression::Class(cn) => Type::Class(cn.clone()),
+        Expression::Field { typed, .. } => typed.clone(),
+        Expression::Struct(typename, _) => Type::Struct(typename.clone()),
+        Expression::String(_) => Type::String,
+        Expression::Array(items) => {
+            assert_ne!(items.len(), 0);
+            let inner_type = infer_type(&items[0]);
+            Type::Array(Box::new(inner_type))
+        }
+        Expression::Call {
+            target: _,
+            name: _,
+            arguments: _,
+            typed,
+        } => typed.clone(),
+        unknown => panic!("Unknown expression to infer: {unknown:?}"),
+    }
 }

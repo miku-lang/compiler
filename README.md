@@ -7,3 +7,10 @@ $ miku-lang HelloMiku.miku -o HelloMiku.c
 $ gcc HelloMiku.c -o miku
 $ ./miku
 ```
+
+## Caveats
+
+You can't put an track inside another track.
+```rs
+[[0, 1, 2], [0, 1, 2], [0, 1, 2]] // won't compile
+```

@@ -94,8 +94,7 @@ fn convert_import(pair: Pair<Rule>) -> RemixStatement {
             RemixType::Selective { module, items }
         }
         _ => {
-            println!("{:?}", inner[0]);
-            todo!();
+            panic!("{:?}", inner[0]);
         }
     };
     RemixStatement {
@@ -518,6 +517,7 @@ fn convert_expression(pair: Pair<Rule>) -> Expression {
                 .iter()
                 .map(|e| convert_expression(e.clone()))
                 .collect::<Vec<_>>();
+
             Expression {
                 kind: ExpressionKind::Array(array),
                 span: Span::default(),
@@ -554,8 +554,7 @@ fn convert_expression(pair: Pair<Rule>) -> Expression {
             }
         }
         unknown => {
-            println!("unknown: {:?}", unknown);
-            unreachable!();
+            panic!("unknown: {:?}", unknown);
         }
     }
 }

@@ -21,6 +21,18 @@ song HelloMiku {
         crescendo { "name": "Teto", "surname": "Kasane" }
     }
 
+    melody index(i: note) {
+        sing "index note: ", i
+    }
+
+    melody index(i: lyric) {
+        sing "index lyric: ", i
+    }
+
+    melody index(i: lyric, value: note) {
+        sing "set index lyric: ", i, " to value ", value
+    }
+
     verse main(lyrics: track) -> note {
         let hello = play HelloMiku
         sing hello.message
@@ -54,6 +66,10 @@ song HelloMiku {
         }
 
         sing "1337: ", [1337, 69, 42, 666][0]
+        sing "69: ", [1337, 69, 42, 666][1]
+
+        hello[0]
+        hello["hello"] = 42
 
         sing "end"
 
