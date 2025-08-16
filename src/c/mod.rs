@@ -595,7 +595,7 @@ void {title}_deallocate({title}* song) {{
 
                     if is_tmp_var {
                         let Expression::Array(inner) = iterator else {
-                            panic!("Can't iterator a non-track variable");
+                            panic!("Can't iterate on a non-track variable");
                         };
 
                         write!(

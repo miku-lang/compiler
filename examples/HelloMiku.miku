@@ -66,6 +66,10 @@ song HelloMiku {
             sing c
         }
 
+        for v in hello.character() {
+            sing v.key, " is ", v.value
+        }
+
         sing "1337: ", [1337, 69, 42, 666][0]
         sing "69: ", [1337, 69, 42, 666][1]
         sing "track.len(): ", [1337, 69, 42, 666].len()
