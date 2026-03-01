@@ -1,4 +1,6 @@
 use crate::parser::inferrer::Inferrer;
+use crate::parser::inferrer::ModuleSong;
+use crate::parser::inferrer::infer_type;
 use crate::parser::native::NativeModule;
 use crate::parser::typedast::*;
 use std::collections::{BTreeMap, HashMap};
@@ -125,13 +127,18 @@ void print_bool(bool value) {{
 
         self.codegen_module(&mut file, self.inferrer.clone())?;
 
+        let namespace = if self.inferrer.album.len() > 0 {
+            format!("{}_", self.inferrer.album.join("_"))
+        } else {
+            "".into()
+        };
         writeln!(
             file,
             r#"int main(int argc, const char** argv) {{
     array_string args;
     args.length = argc;
     args.items = argv;
-    return {}_main_array_string(args);
+    return {namespace}{}_main_array_string(args);
 }}"#,
             self.inferrer.title
         )?;
@@ -182,28 +189,119 @@ void print_bool(bool value) {{
         Ok(())
     }
 
-    fn codegen_module(&mut self, file: &mut File, inferrer: Inferrer) -> std::io::Result<()> {
-        for module in inferrer.modules.clone() {
-            self.codegen_module(file, module)?;
+    fn module_is_native(&self, name: &str) -> bool {
+        for (module_name, module) in &self.inferrer.modules {
+            if module_name == name {
+                if let ModuleSong::Native(_) = module {
+                    return true;
+                }
+            }
         }
 
-        for module in inferrer.native_modules.clone() {
-            self.codegen_native_module(file, module)?;
+        false
+    }
+
+    fn codegen_module(&mut self, file: &mut File, inferrer: Inferrer) -> std::io::Result<()> {
+        for (module_name, module) in inferrer.modules.clone() {
+            match module {
+                ModuleSong::Song(inferrer) => {
+                    self.codegen_module(file, inferrer)?;
+                }
+                ModuleSong::Native(native_module) => {
+                    write!(file, "#include <")?;
+                    if native_module.namespace.len() > 0 {
+                        write!(file, "{}/", native_module.namespace.join("/"))?;
+                    }
+                    writeln!(file, "{}.h>", native_module.name.to_lowercase())?;
+
+                    let mut namespace = native_module.namespace.join("_");
+                    if namespace.len() > 0 {
+                        namespace.push_str("_");
+                    }
+
+                    for v in &native_module.variables {
+                        write!(file, "const ")?;
+                        write!(
+                            file,
+                            "{}",
+                            match &v.typed {
+                                Type::Void => todo!(),
+                                Type::Int => todo!(),
+                                Type::Float => todo!(),
+                                Type::String => todo!(),
+                                Type::Boolean => todo!(),
+                                Type::Array(_) => todo!(),
+                                Type::Struct(name) => name,
+                                Type::Song(_) => todo!(),
+                                Type::Class(items) => todo!(),
+                                Type::Variable(_) => todo!(),
+                            }
+                        )?;
+                        writeln!(
+                            file,
+                            " {namespace}{}_{} = {};",
+                            native_module.name, v.name, v.name
+                        )?;
+                    }
+
+                    for f in &native_module.functions {
+                        write!(
+                            file,
+                            "{} {namespace}{}_{}_{}(",
+                            type_to_c(&f.return_type),
+                            native_module.name,
+                            f.name,
+                            types_to_string(&f.parameters)
+                        )?;
+                        for (i, p) in f.parameters.iter().enumerate() {
+                            if i > 0 {
+                                write!(file, ", ")?;
+                            }
+                            write!(file, "{} arg{i}", type_to_c(&p))?;
+                        }
+                        writeln!(file, ") {{")?;
+                        write!(file, "\t{}(", f.name)?;
+                        for i in 0..f.parameters.len() {
+                            if i > 0 {
+                                write!(file, ", ")?;
+                            }
+                            write!(file, "arg{i}")?;
+                        }
+                        writeln!(file, ");")?;
+                        writeln!(file, "}}")?;
+                    }
+                }
+            }
         }
+
+        let namespace = if inferrer.album.len() > 0 {
+            format!("{}_", inferrer.album.join("_"))
+        } else {
+            "".into()
+        };
 
         for (fields, name) in &inferrer.structs {
-            writeln!(file, "typedef struct {name} {{")?;
+            writeln!(file, "typedef struct {namespace}{name} {{")?;
             for f in fields {
                 writeln!(file, "    {} {};", type_to_c(&f.1), f.0)?;
             }
-            writeln!(file, "}} {name};\n")?;
+            writeln!(file, "}} {namespace}{name};\n")?;
 
             gen_array(file, &Type::Struct(name.to_string()))?;
         }
 
+        for (module_name, song) in &inferrer.current_module {
+            match song {
+                ModuleSong::Song(inferrer) => {
+                    self.codegen_module(file, inferrer.clone())?;
+                }
+                ModuleSong::Native(native_module) => todo!(),
+            }
+        }
+
         let title = inferrer.title.clone();
 
-        writeln!(file, "typedef struct {title} {{")?;
+        writeln!(file, "typedef struct {namespace}{title} {{")?;
         writeln!(file, "    uint16_t internal_counter;")?;
         if let Some(cover) = &inferrer.covers {
             writeln!(file, "    {cover}* parent;")?;
@@ -213,10 +311,10 @@ void print_bool(bool value) {{
         }
         writeln!(
             file,
-            r#"}} {title};
+            r#"}} {namespace}{title};
 
-{title}* {title}_allocate() {{
-    {title}* tmp = malloc(sizeof(*tmp));
+{namespace}{title}* {namespace}{title}_allocate() {{
+    {namespace}{title}* tmp = malloc(sizeof(*tmp));
     memset(tmp, 0, sizeof(*tmp));"#
         )?;
 
@@ -238,7 +336,7 @@ void print_bool(bool value) {{
             r#"    return tmp;
 }}
 
-void {title}_deallocate({title}* song) {{
+void {namespace}{title}_deallocate({namespace}{title}* song) {{
     song->internal_counter--;
     if (song->internal_counter == 0)
     {{"#
@@ -273,7 +371,7 @@ void {title}_deallocate({title}* song) {{
 
             write!(
                 file,
-                "{} {}_{}_{}(",
+                "{} {namespace}{}_{}_{}(",
                 type_to_c(&fun.return_type),
                 fun.class,
                 fun.name,
@@ -367,6 +465,7 @@ void {title}_deallocate({title}* song) {{
                 match target_type {
                     Type::Song(_) => write!(file, "->{name}"),
                     Type::Struct(_) => write!(file, ".{name}"),
+                    Type::Class(_) => write!(file, "_{name}"),
                     unknown => panic!("Unknown variable type {unknown:?}"),
                 }
             }
@@ -399,7 +498,7 @@ void {title}_deallocate({title}* song) {{
                     _ => false,
                 };
 
-                match target_type {
+                match &target_type {
                     Type::Array(t) => {
                         let Expression::Array(inner) = &**target else {
                             panic!("Expression is not an harmony");
@@ -416,10 +515,18 @@ void {title}_deallocate({title}* song) {{
 
                         return Ok(());
                     }
-                    Type::Class(_) => {
-                        // probably a native module, add a check?
+                    Type::Class(classname) => {
+                        let mut album = self.inferrer.album.join("_");
+                        if album.len() > 0 {
+                            album.push_str("_");
+                        }
 
-                        write!(file, "{name}(")?;
+                        write!(
+                            file,
+                            "{}_{name}_{}(",
+                            classname.join("_"),
+                            types_to_string(&types)
+                        )?;
                         for (i, a) in arguments.iter().enumerate() {
                             if i > 0 || is_method {
                                 write!(file, ", ")?;
@@ -431,8 +538,6 @@ void {title}_deallocate({title}* song) {{
                     }
                     _ => {}
                 }
-
-                println!("{target_type:?}: {name:?}");
 
                 write!(
                     file,
@@ -481,7 +586,7 @@ void {title}_deallocate({title}* song) {{
                 self.print_depth(file)?;
                 write!(file, "}}")
             }
-            Expression::Class(classname) => write!(file, "{classname}"),
+            Expression::Class(classname) => write!(file, "{}", classname.join(".")),
             Expression::Struct(name, fields) => {
                 write!(file, "({name}){{ ")?;
                 for (i, (n, e)) in fields.iter().enumerate() {
@@ -895,7 +1000,7 @@ fn type_to_debug_name(t: &Type) -> String {
         Type::Array(d) => format!("track[{}]", type_to_debug_name(d)),
         Type::Struct(d) => format!("harmony{{{d}}}"),
         Type::Song(d) => format!("{d}"),
-        Type::Class(name) => name.clone(),
+        Type::Class(name) => name.join("."),
         Type::Variable(_) => unreachable!(),
     }
 }
@@ -910,7 +1015,7 @@ fn type_to_encoded_name(t: &Type) -> String {
         Type::Array(d) => format!("array_{}", type_to_encoded_name(d)),
         Type::Struct(d) => format!("struct_{d}"),
         Type::Song(d) => format!("song_{d}"),
-        Type::Class(name) => name.clone(),
+        Type::Class(name) => name.join("."),
         Type::Variable(_) => unreachable!(),
     }
 }
@@ -918,7 +1023,7 @@ fn type_to_encoded_name(t: &Type) -> String {
 fn extract_class_name(t: &Type) -> String {
     match t {
         Type::Song(name) => name.clone(),
-        Type::Class(name) => name.clone(),
+        Type::Class(name) => name.join("."),
         Type::Variable(var) => extract_class_name(var),
         unk => panic!("--- {unk:?} ---"),
     }
@@ -944,28 +1049,4 @@ fn types_to_string(args: &Vec<Type>) -> String {
         .map(|e| type_to_encoded_name(e))
         .collect::<Vec<_>>()
         .join("_")
-}
-
-pub fn infer_type(expr: &Expression) -> Type {
-    match expr {
-        Expression::Integer(_) => Type::Int,
-        Expression::Number(_) => Type::Float,
-        Expression::Variable(_, typed) => Type::Variable(Box::new(typed.clone())),
-        Expression::Class(cn) => Type::Class(cn.clone()),
-        Expression::Field { typed, .. } => typed.clone(),
-        Expression::Struct(typename, _) => Type::Struct(typename.clone()),
-        Expression::String(_) => Type::String,
-        Expression::Array(items) => {
-            assert_ne!(items.len(), 0);
-            let inner_type = infer_type(&items[0]);
-            Type::Array(Box::new(inner_type))
-        }
-        Expression::Call {
-            target: _,
-            name: _,
-            arguments: _,
-            typed,
-        } => typed.clone(),
-        unknown => panic!("Unknown expression to infer: {unknown:?}"),
-    }
 }

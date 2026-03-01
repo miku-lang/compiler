@@ -1,4 +1,4 @@
-program = { SOI ~ NEWLINE* ~ (import_statement ~ NEWLINE+)* ~ NEWLINE* ~ song_declaration ~ NEWLINE* ~ EOI }
+program = { SOI ~ NEWLINE* ~ (album_statement ~ NEWLINE+)? ~ (import_statement ~ NEWLINE+)* ~ NEWLINE* ~ song_declaration ~ NEWLINE* ~ EOI }
 
 block = { NEWLINE* ~ (statement ~ NEWLINE+)* ~ statement? }
 
@@ -14,17 +14,25 @@ statement = {
     expression_statement
 }
 
+album_statement = {
+    "album" ~ module_name
+}
+
+module_name = {
+    identifier ~ ("." ~ identifier)*
+}
+
 import_statement = {
     // remix module as alias
-    "remix" ~ identifier ~ ("as" ~ identifier)? |
-    // remix { item1, item2 as alias } from "module"
-    "remix" ~ "{" ~ import_list ~ "}" ~ "from" ~ identifier |
+    "remix" ~ module_name ~ ("as" ~ identifier)? |
+    // remix { item1, item2 as alias } from module
+    "remix" ~ "{" ~ import_list ~ "}" ~ "from" ~ module_name |
     // remix * from module
     wildcard_import_statement
 }
 
 wildcard_import_statement = {
-    "remix" ~ "*" ~ "from" ~ identifier
+    "remix" ~ "*" ~ "from" ~ module_name
 }
 
 import_list = { import_item ~ ("," ~ import_item)* }
@@ -163,7 +171,6 @@ string_literal = @{
 expression_list = { expression ~ ("," ~ expression)* }
 
 WHITESPACE = _{ " " | "\t" }
-NEWLINE = _{ "\n" | "\r\n" | "\r" }
 
 COMMENT = _{
     "//" ~ (!NEWLINE ~ ANY)* |

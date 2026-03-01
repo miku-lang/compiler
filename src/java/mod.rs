@@ -1,5 +1,5 @@
-use crate::c::infer_type;
 use crate::parser::inferrer::Inferrer;
+use crate::parser::inferrer::infer_type;
 use crate::parser::typedast::BinaryOperator;
 use crate::parser::typedast::Statement;
 use crate::parser::typedast::TuneDirection;
@@ -44,13 +44,32 @@ impl CodeGenerator {
     }
 
     fn codegen(&mut self, filename: &str) -> std::io::Result<()> {
-        for module in self.inferrer.modules.clone() {
-            let title = module.title.clone();
-            let mut generator = CodeGenerator::new(module);
-            generator.codegen(&format!("{title}.java"))?;
+        // for module in self.inferrer.modules.clone() {
+        //     let title = module.title.clone();
+        //     let mut generator = CodeGenerator::new(module);
+        //     generator.codegen(&format!("{title}.java"))?;
+        // }
+        for (name, song_module) in &self.inferrer.current_module {
+            match song_module {
+                crate::parser::inferrer::ModuleSong::Song(inferrer) => {
+                    let title = inferrer.title.clone();
+                    let album = if inferrer.album.len() > 0 {
+                        format!("{}/", inferrer.album.join("/"))
+                    } else {
+                        "".to_string()
+                    };
+                    let mut generator = CodeGenerator::new(inferrer.clone());
+                    generator.codegen(&format!("{album}{title}.java"))?;
+                }
+                crate::parser::inferrer::ModuleSong::Native(native_module) => todo!(),
+            }
         }
 
         let mut file = File::create(filename)?;
+
+        if self.inferrer.album.len() > 0 {
+            writeln!(file, "package {};\n", self.inferrer.album.join("."))?;
+        }
 
         write!(file, "class {}", self.inferrer.title)?;
         if let Some(cover) = &self.inferrer.covers {
@@ -150,7 +169,7 @@ impl CodeGenerator {
             Expression::Number(_) => todo!(),
             Expression::String(s) => write!(file, "{s}")?,
             Expression::Boolean(b) => write!(file, "{}", if *b { "true" } else { "false" })?,
-            Expression::Class(cs) => write!(file, "{cs}")?,
+            Expression::Class(cs) => write!(file, "{}", cs.join("."))?,
             Expression::Variable(name, _) => {
                 if name == "song" {
                     write!(file, "this")?;

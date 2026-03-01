@@ -40,6 +40,7 @@ fn convert_program(pair: Pair<Rule>) -> Program {
     assert_eq!(pair.as_rule(), Rule::program);
 
     let mut program = Program {
+        album: vec![],
         imports: vec![],
         song: SongDeclaration {
             name: "Miku".into(),
@@ -53,6 +54,14 @@ fn convert_program(pair: Pair<Rule>) -> Program {
 
     for pair in inner {
         match pair.as_rule() {
+            Rule::album_statement => {
+                let inner = pair.into_inner().collect::<Vec<_>>();
+                let package = inner
+                    .iter()
+                    .map(|i| format!("{}", i.as_str()))
+                    .collect::<Vec<_>>();
+                program.album = package;
+            }
             Rule::import_statement => {
                 program.imports.push(convert_import(pair));
             }
@@ -73,8 +82,13 @@ fn convert_import(pair: Pair<Rule>) -> RemixStatement {
     let inner = pair.into_inner().collect::<Vec<_>>();
 
     let import_type = match inner[0].as_rule() {
-        Rule::identifier => {
-            let module = inner[0].as_str().to_string();
+        // Rule::identifier => {
+        Rule::module_name => {
+            let module_path = inner[0].clone().into_inner().collect::<Vec<_>>();
+            let module = module_path
+                .iter()
+                .map(|p| p.as_str().to_string())
+                .collect::<Vec<_>>();
 
             let alias = if inner.len() == 2 {
                 Some(inner[1].as_str().to_string())

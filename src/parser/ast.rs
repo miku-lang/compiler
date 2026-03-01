@@ -19,6 +19,7 @@ impl Default for Span {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    pub album: Vec<String>,
     pub imports: Vec<RemixStatement>,
     pub song: SongDeclaration,
     pub span: Span,
@@ -116,7 +117,7 @@ pub enum StatementKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RemixType {
     Module {
-        module: String,
+        module: Vec<String>,
         alias: Option<String>,
     },
     Selective {

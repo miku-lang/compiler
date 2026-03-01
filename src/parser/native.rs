@@ -16,15 +16,24 @@ pub struct NativeVariable {
 
 #[derive(Debug, Clone)]
 pub struct NativeModule {
+    pub namespace: Vec<String>,
     pub name: String,
     pub functions: Vec<NativeFunction>,
     pub variables: Vec<NativeVariable>,
 }
 
 impl NativeModule {
-    pub fn new(filename: &str) -> Self {
-        let content = std::fs::read_to_string(format!("{filename}.album"))
-            .expect(&format!("File {filename}.album not found"));
+    pub fn new(namespace: Vec<String>, filename: &str) -> Self {
+        let name = filename[0..(filename.len() - 6)].to_string();
+        let filename = if namespace.len() > 0 {
+            format!("{}/{filename}", namespace.join("/"))
+        } else {
+            filename.to_string()
+        };
+
+        assert!(filename.ends_with(".album"));
+        let content = std::fs::read_to_string(format!("{filename}"))
+            .expect(&format!("File {filename} not found"));
 
         let mut functions = vec![];
         let mut variables = vec![];
@@ -66,7 +75,8 @@ impl NativeModule {
         }
 
         Self {
-            name: filename.to_string(),
+            namespace,
+            name,
             functions,
             variables,
         }
@@ -74,6 +84,18 @@ impl NativeModule {
 
     pub fn has_function(&self, name: &str) -> bool {
         self.functions.iter().find(|p| p.name == name).is_some()
+    }
+
+    pub fn get_function_return_type(&self, name: &str, parameters: &Vec<Type>) -> Option<Type> {
+        if let Some(f) = self
+            .functions
+            .iter()
+            .find(|p| p.name == name && p.parameters == *parameters)
+        {
+            Some(f.return_type.clone())
+        } else {
+            None
+        }
     }
 
     pub fn get_variable(&self, name: &str) -> Option<&NativeVariable> {

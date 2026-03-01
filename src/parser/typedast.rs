@@ -12,7 +12,7 @@ pub enum Type {
     Array(Box<Type>),
     Struct(String),
     Song(String),
-    Class(String),
+    Class(Vec<String>),
     Variable(Box<Type>),
 }
 
@@ -56,7 +56,7 @@ pub enum Expression {
     Number(f64),
     String(String),
     Boolean(bool),
-    Class(String),
+    Class(Vec<String>),
     Variable(String, Type),
     Binary {
         operator: BinaryOperator,

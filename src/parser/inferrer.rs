@@ -1,9 +1,10 @@
-use crate::c::infer_type;
 use crate::parser::ast::MikuType;
 use crate::parser::native::NativeModule;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 
 use super::ast;
 use super::typedast::Function as AstFunction;
@@ -12,6 +13,7 @@ use super::typedast::*;
 
 #[derive(Debug, Clone)]
 pub struct Inferrer {
+    pub album: Vec<String>,
     pub title: String,
     pub covers: Option<String>,
     scopes: Vec<HashMap<String, Type>>,
@@ -20,25 +22,31 @@ pub struct Inferrer {
     variables: Vec<Variable>,
     pub typed_functions: Vec<AstFunction>,
     pub typed_variables: Vec<AstVariable>,
-    pub modules: Vec<Inferrer>,
-    pub native_modules: Vec<NativeModule>,
+    pub modules: HashMap<String, ModuleSong>,
+    pub current_module: HashMap<String, ModuleSong>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ModuleSong {
+    Song(Inferrer),
+    Native(NativeModule),
 }
 
 impl Inferrer {
     pub fn new(program: ast::Program) -> Self {
-        let mut modules = vec![];
-        let mut native_modules = vec![];
+        let mut modules = HashMap::new();
 
         for r in &program.imports {
             match &r.import_type {
-                ast::RemixType::Module { module, alias: _ } => {
-                    if Path::new(&format!("{module}.miku")).exists() {
-                        let code = super::parse(&format!("{module}.miku"));
-                        modules.push(Self::new(code));
-                    } else if Path::new(&format!("{module}.album")).exists() {
-                        native_modules.push(NativeModule::new(&module));
+                ast::RemixType::Module { module, alias } => {
+                    let name = if let Some(alias) = alias {
+                        alias.clone()
                     } else {
-                        panic!("Module {module} not found.");
+                        module.join(".")
+                    };
+
+                    for (n, s) in load_module(module.clone()) {
+                        modules.insert(n, s);
                     }
                 }
                 ast::RemixType::Selective {
@@ -84,6 +92,7 @@ impl Inferrer {
         }
 
         Self {
+            album: program.album.clone(),
             title: program.song.name.clone(),
             covers: program.song.parent.clone(),
             scopes: vec![],
@@ -93,7 +102,7 @@ impl Inferrer {
             typed_functions: vec![],
             typed_variables: vec![],
             modules,
-            native_modules,
+            current_module: HashMap::new(),
         }
     }
 
@@ -143,23 +152,65 @@ impl Inferrer {
                 }
             }
 
-            if let Some(module) = self.find_module(title) {
-                module.push();
+            if let Some(song_module) = self.current_module.get_mut(title) {
+                match song_module {
+                    ModuleSong::Song(inferrer) => {
+                        inferrer.push();
 
-                let ret = module.infer_function(title, name, parameters, is_method);
+                        let ret = inferrer.infer_function(title, name, parameters, is_method);
 
-                module.pop();
-
-                return ret;
-            } else if let Some(module) = self.find_native_module(title) {
-                if let Some(f) = module.functions.iter().find(|f| f.name == name) {
-                    return f.return_type.clone();
-                } else {
-                    panic!("Native module {title} doesn't have a function called {name}.");
+                        inferrer.pop();
+                        return ret;
+                    }
+                    ModuleSong::Native(native_module) => todo!(),
                 }
-            } else {
-                panic!("Unknown module {title}.");
             }
+
+            if let Some(song_module) = self.get_external_song(title) {
+                match song_module {
+                    ModuleSong::Song(inferrer) => {
+                        todo!()
+                        // inferrer.push();
+
+                        // let ret = inferrer.infer_function(title, name, parameters, is_method);
+
+                        // inferrer.pop();
+                        // return ret;
+                    }
+                    ModuleSong::Native(native_module) => {
+                        if let Some(ret) =
+                            native_module.get_function_return_type(&name, &parameters)
+                        {
+                            return ret.clone();
+                        // } else if let Some(var) = natmod.get_variable(&member) {
+                        //     (
+                        //         var.typed.clone(),
+                        //         Expression::Variable(member.clone(), var.typed.clone()),
+                        //     )
+                        } else {
+                            todo!()
+                        }
+                    }
+                }
+            }
+
+            // if let Some(module) = self.find_module(title) {
+            //     module.push();
+
+            //     let ret = module.infer_function(title, name, parameters, is_method);
+
+            //     module.pop();
+
+            //     return ret;
+            // } else if let Some(module) = self.find_native_module(title) {
+            //     if let Some(f) = module.functions.iter().find(|f| f.name == name) {
+            //         return f.return_type.clone();
+            //     } else {
+            //         panic!("Native module {title} doesn't have a function called {name}.");
+            //     }
+            // } else {
+            //     panic!("Unknown module {title}.");
+            // }
         }
 
         let mut func = None;
@@ -570,22 +621,18 @@ impl Inferrer {
             ast::ExpressionKind::Boolean(b) => (Type::Boolean, Expression::Boolean(*b)),
             ast::ExpressionKind::Identifier(ident) => {
                 if self.title == *ident {
-                    (
-                        Type::Song(ident.to_string()),
-                        Expression::Class(ident.to_string()),
-                    )
+                    let mut path = self.album.clone();
+                    path.push(ident.to_string());
+                    (Type::Song(ident.to_string()), Expression::Class(path))
                 } else if let Some(var) = self.find_variable(ident) {
                     (var.clone(), Expression::Variable(ident.to_string(), var))
-                } else if let Some(_) = self.modules.iter().find(|m| m.title == *ident) {
-                    (
-                        Type::Song(ident.to_string()),
-                        Expression::Class(ident.to_string()),
-                    )
-                } else if let Some(_) = self.native_modules.iter().find(|m| m.name == *ident) {
-                    (
-                        Type::Song(ident.to_string()),
-                        Expression::Class(ident.to_string()),
-                    )
+                } else if self.class_from_module(&ident) {
+                    let mut path = self.album.clone();
+                    path.push(ident.to_string());
+                    (Type::Song(ident.to_string()), Expression::Class(path))
+                } else if let Some(fqcn) = self.class_from_external_module(&ident) {
+                    let path = fqcn.split(".").map(|s| format!("{s}")).collect::<Vec<_>>();
+                    (Type::Song(ident.to_string()), Expression::Class(path))
                 } else {
                     panic!("'{ident}' not found.");
                 }
@@ -662,7 +709,7 @@ impl Inferrer {
                             if let Some(var) = self.find_variable(&vn) {
                                 assert_eq!(var, *typed);
                                 if let Type::Song(cn) = var {
-                                    (cn.clone(), true)
+                                    (vec![cn.clone()], true)
                                 } else {
                                     todo!()
                                 }
@@ -675,11 +722,11 @@ impl Inferrer {
                             name: _,
                             typed,
                         } => match typed {
-                            Type::Song(song_type) => (song_type.clone(), true),
+                            Type::Song(song_type) => (vec![song_type.clone()], true),
                             _ => todo!(),
                         },
                         Expression::Array(_) => match name.as_str() {
-                            "len" => ("internal track".to_string(), false),
+                            "len" => (vec!["internal track".to_string()], false),
                             _ => todo!(),
                         },
                         _ => {
@@ -687,7 +734,8 @@ impl Inferrer {
                         }
                     };
 
-                    let return_type = self.infer_function(&classname, &name, types, is_method);
+                    let return_type =
+                        self.infer_function(&classname.last().unwrap(), &name, types, is_method);
 
                     let expr = Expression::Call {
                         target,
@@ -771,34 +819,79 @@ impl Inferrer {
                                     "Song {song_type} doesn't have a variable or function called {member}."
                                 );
                             }
-                        } else if let Some(_) =
-                            self.modules.iter_mut().find(|m| m.title == song_type)
-                        {
-                            (
-                                Type::Void,
-                                Expression::Method {
-                                    name: member.clone(),
-                                    target: Box::new(e),
-                                },
-                            )
-                        } else if let Some(natmod) =
-                            self.native_modules.iter_mut().find(|m| m.name == song_type)
-                        {
-                            if natmod.has_function(&member) {
-                                (
+                        // } else if let Some(_) =
+                        //     self.modules.iter_mut().find(|m| m.title == song_type)
+                        // {
+                        //     (
+                        //         Type::Void,
+                        //         Expression::Method {
+                        //             name: member.clone(),
+                        //             target: Box::new(e),
+                        //         },
+                        //     )
+                        // } else if let Some(natmod) =
+                        //     self.native_modules.iter_mut().find(|m| m.name == song_type)
+                        // {
+                        //     if natmod.has_function(&member) {
+                        //         (
+                        //             Type::Void,
+                        //             Expression::Method {
+                        //                 name: member.clone(),
+                        //                 target: Box::new(e),
+                        //             },
+                        //         )
+                        //     } else if let Some(var) = natmod.get_variable(&member) {
+                        //         (
+                        //             var.typed.clone(),
+                        //             Expression::Variable(member.clone(), var.typed.clone()),
+                        //         )
+                        //     } else {
+                        //         panic!("{song_type:?} / {member}");
+                        //     }
+                        } else if let Some(song_module) = self.current_module.get(&song_type) {
+                            match song_module {
+                                ModuleSong::Song(inferrer) => (
                                     Type::Void,
                                     Expression::Method {
                                         name: member.clone(),
                                         target: Box::new(e),
                                     },
-                                )
-                            } else if let Some(var) = natmod.get_variable(&member) {
-                                (
-                                    var.typed.clone(),
-                                    Expression::Variable(member.clone(), var.typed.clone()),
-                                )
-                            } else {
-                                panic!("{song_type:?} / {member}");
+                                ),
+                                ModuleSong::Native(native_module) => {
+                                    todo!()
+                                }
+                            }
+                        } else if let Some(external_module) = self.get_external_song(&song_type) {
+                            match external_module {
+                                ModuleSong::Song(inferrer) => todo!(),
+                                ModuleSong::Native(native_module) => {
+                                    for func in &native_module.functions {
+                                        if func.name == *member {
+                                            return (
+                                                func.return_type.clone(),
+                                                Expression::Method {
+                                                    name: member.clone(),
+                                                    target: Box::new(e),
+                                                },
+                                            );
+                                        }
+                                    }
+
+                                    for field in &native_module.variables {
+                                        if field.name == *member {
+                                            return (
+                                                field.typed.clone(),
+                                                Expression::Field {
+                                                    target: Box::new(e),
+                                                    name: member.clone(),
+                                                    typed: field.typed.clone(),
+                                                },
+                                            );
+                                        }
+                                    }
+
+                                    panic!("{member} is not a member of {}", native_module.name);
+                                }
                             }
                         } else {
                             panic!("Unknown Song => {song_type}");
@@ -841,7 +934,9 @@ impl Inferrer {
                 }
             }
             ast::ExpressionKind::Play(song_type) => {
-                if *song_type == self.title || self.find_module(song_type).is_some() {
+                if *song_type == self.title
+                /*|| self.find_module(song_type).is_some()*/
+                {
                     (
                         Type::Song(song_type.to_string()),
                         Expression::Play(song_type.to_string()),
@@ -914,31 +1009,28 @@ impl Inferrer {
         member: &str,
         vars: Vec<Type>,
     ) -> Option<Vec<Type>> {
+        todo!();
+
         let mut vars = vars;
         vars.push(Type::Song(self.title.clone()));
         if let Some(_) = self.functions.iter().find(|f| f.name == *member) {
             Some(vars)
         } else if let Some(cover) = self.covers.clone() {
-            let Some(module) = self.find_module(&cover) else {
-                todo!()
-            };
-
-            if let Some(vars) = module.find_function_in_hierarchy_impl(member, vars) {
-                Some(vars)
-            } else {
-                None
+            if let Some(module) = self.current_module.get_mut(&cover) {
+                //
+                println!("{module:?}");
+            } else if let Some(module) = self.modules.get(&cover) {
+                println!("{module:?} 2");
             }
+
+            // if let Some(vars) = module.find_function_in_hierarchy_impl(member, vars) {
+            // Some(vars)
+            // } else {
+            None
+            // }
         } else {
             None
         }
-    }
-
-    fn find_module(&mut self, name: &str) -> Option<&mut Inferrer> {
-        self.modules.iter_mut().find(|m| m.title == name)
-    }
-
-    fn find_native_module(&mut self, name: &str) -> Option<&mut NativeModule> {
-        self.native_modules.iter_mut().find(|m| m.name == name)
     }
 
     fn get_struct_name(&mut self, struct_type: BTreeMap<String, Type>) -> String {
@@ -1053,6 +1145,40 @@ impl Inferrer {
             self.typed_functions.push(function);
         }
     }
+
+    fn class_from_module(&mut self, name: &str) -> bool {
+        let album = self.album.join("/");
+        if Path::new(&format!("{album}/{name}.miku")).exists() {
+            let code = super::parse(&format!("{album}/{name}.miku"));
+            self.current_module
+                .insert(name.to_string(), ModuleSong::Song(Inferrer::new(code)));
+            true
+        } else if Path::new(&format!("{album}/{name}.album")).exists() {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn class_from_external_module(&self, name: &str) -> Option<String> {
+        for (song_name, _) in &self.modules {
+            if song_name.ends_with(&format!(".{name}")) || song_name == name {
+                return Some(song_name.to_string());
+            }
+        }
+
+        None
+    }
+
+    fn get_external_song(&self, name: &str) -> Option<&ModuleSong> {
+        for (song_name, module) in &self.modules {
+            if song_name.ends_with(&format!(".{name}")) || song_name == name {
+                return Some(module);
+            }
+        }
+
+        None
+    }
 }
 
 fn check_parameters_compatibility(left: &Vec<Type>, right: &Vec<ast::Parameter>) -> bool {
@@ -1093,4 +1219,73 @@ struct Function {
     parameters: Vec<ast::Parameter>,
     return_type: MikuType,
     body: Vec<ast::Statement>,
+}
+
+fn load_module(paths: Vec<String>) -> HashMap<String, ModuleSong> {
+    let mut inferrers = HashMap::new();
+
+    let mut path = PathBuf::new();
+    paths.iter().for_each(|p| path.push(p));
+
+    let potential_filename = format!("{}.album", path.to_str().unwrap());
+    if Path::new(&potential_filename).is_file() {
+        let path = path
+            .iter()
+            .map(|e| format!("{}", e.to_str().unwrap()))
+            .collect::<Vec<_>>();
+        let filename = &potential_filename;
+        let code = NativeModule::new(vec![], filename);
+        let name = filename[0..(filename.len() - 6)].to_string();
+        inferrers.insert(name, ModuleSong::Native(code));
+    } else {
+        let files = fs::read_dir(&path).unwrap();
+
+        for file in files {
+            if let Ok(entry) = file {
+                if let Some(filename) = entry.file_name().to_str() {
+                    if filename.ends_with(".miku") {
+                        let code = super::parse(&format!("{}/{filename}", paths.join("/")));
+                        let name = filename[0..(filename.len() - 5)].to_string();
+                        let name = format!("{}.{name}", paths.join("."));
+                        inferrers.insert(name, ModuleSong::Song(Inferrer::new(code)));
+                    } else if filename.ends_with(".album") {
+                        let path = path
+                            .iter()
+                            .map(|e| format!("{}", e.to_str().unwrap()))
+                            .collect::<Vec<_>>();
+                        let code = NativeModule::new(path, filename);
+                        let name = filename[0..(filename.len() - 6)].to_string();
+                        let name = format!("{}.{name}", paths.join("."));
+                        inferrers.insert(name, ModuleSong::Native(code));
+                    }
+                }
+            }
+        }
+    }
+
+    inferrers
+}
+
+pub fn infer_type(expr: &Expression) -> Type {
+    match expr {
+        Expression::Integer(_) => Type::Int,
+        Expression::Number(_) => Type::Float,
+        Expression::Variable(_, typed) => Type::Variable(Box::new(typed.clone())),
+        Expression::Class(cn) => Type::Class(cn.clone()),
+        Expression::Field { typed, .. } => typed.clone(),
+        Expression::Struct(typename, _) => Type::Struct(typename.clone()),
+        Expression::String(_) => Type::String,
+        Expression::Array(items) => {
+            assert_ne!(items.len(), 0);
+            let inner_type = infer_type(&items[0]);
+            Type::Array(Box::new(inner_type))
+        }
+        Expression::Call {
+            target: _,
+            name: _,
+            arguments: _,
+            typed,
+        } => typed.clone(),
+        unknown => panic!("Unknown expression to infer: {unknown:?}"),
+    }
 }
